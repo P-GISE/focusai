@@ -1,0 +1,15 @@
+.git
+node_modules
+dist
+server/dist
+.env
+.env.*
+.env.server
+.env.*.local
+**/.env
+**/.env.*
+logs
+*.log
+*.tsbuildinfo
+.gitlab-ci.yml
+npm-debug.log*

@@ -1,0 +1,28 @@
+{
+  "name": "FocusAI web UI baseline",
+  "updated": "2026-07-29",
+  "tone": "quiet operational learning dashboard",
+  "viewports": [
+    {
+      "name": "desktop-login",
+      "width": 1440,
+      "height": 900,
+      "surface": "login",
+      "referenceImage": "docs/visual-baselines/focusai-login-desktop-1440x900.png"
+    },
+    {
+      "name": "mobile-login",
+      "width": 500,
+      "height": 844,
+      "surface": "login",
+      "referenceImage": "docs/visual-baselines/focusai-login-mobile-500x844.png"
+    }
+  ],
+  "requirements": {
+    "noHorizontalOverflow": true,
+    "cjkWordBreak": "keep-all",
+    "focusRingToken": "--focus-ring",
+    "formFieldsNamed": true,
+    "runtimeStatusWraps": true
+  }
+}

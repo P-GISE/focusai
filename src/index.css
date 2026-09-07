@@ -1,0 +1,88 @@
+:root {
+  --focus-font-body: 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Segoe UI', sans-serif;
+  --focus-font-display: 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Segoe UI', sans-serif;
+  --focus-text-strong: #0f172a;
+  --focus-text-body: #334155;
+  --focus-text-muted: #64748b;
+  --focus-accent: #2563eb;
+  --focus-accent-strong: #1d4ed8;
+  --focus-accent-soft: #eff6ff;
+  --focus-success: #16a34a;
+  --focus-success-soft: #f0fdf4;
+  --focus-warning: #d97706;
+  --focus-warning-soft: #fffbeb;
+  --focus-danger: #dc2626;
+  --focus-danger-soft: #fef2f2;
+  --focus-runtime-local-bg: #ecfeff;
+  --focus-runtime-local-text: #155e75;
+  --focus-runtime-online-bg: #dcfce7;
+  --focus-runtime-online-text: #166534;
+  --focus-runtime-offline-bg: #fef3c7;
+  --focus-runtime-offline-text: #92400e;
+  --focus-surface-page: #f6f8fb;
+  --focus-surface-card: #ffffff;
+  --focus-surface-muted: #f8fafc;
+  --focus-border-subtle: rgba(148, 163, 184, 0.22);
+  --focus-border-strong: rgba(100, 116, 139, 0.32);
+  --focus-radius-card: 12px;
+  --focus-radius-control: 8px;
+  --focus-radius-pill: 999px;
+  --focus-ring: 3px solid rgba(37, 99, 235, 0.28);
+  --focus-ring-offset: 3px;
+  --focus-status-gap: 0.55rem;
+  --focus-compact-panel-padding: 0.65rem;
+  --focus-shadow-card: 0 12px 28px rgba(15, 23, 42, 0.07);
+  --focus-shadow-raised: 0 16px 36px rgba(15, 23, 42, 0.1);
+  font-family: var(--focus-font-body);
+  line-height: 1.5;
+  font-weight: 400;
+  color: #0f172a;
+  letter-spacing: 0;
+  background: var(--focus-surface-page);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--focus-surface-page);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  letter-spacing: 0;
+}
+
+:where(button, input, textarea, select, a[href]):focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+img,
+video,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+a {
+  color: inherit;
+}
