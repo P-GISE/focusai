@@ -20,6 +20,35 @@ FocusAI는 브라우저 기반 학습 세션을 기록하고, 카메라/브라�
 | AI 연동 | Anthropic Messages API, 없으면 로컬 분석 fallback |
 | 모바일 | Capacitor Android 프로젝트 포함 |
 
+## 소스 검토 기준
+
+이 README는 `src`, `server/src`, `bot/src`, `lostark-discord-bot/src`, `docs`, `tests`, `android`, `package.json`, `*.example` 환경변수 파일을 기준으로 다시 작성했습니다. 실제 `.env`, 토큰, 빌드 산출물, 런타임 데이터, `node_modules`는 문서 근거에서 제외했습니다.
+
+검토 결과 이 저장소는 FocusAI 웹앱만 있는 것이 아니라 학습 집중도 측정 클라이언트, Express/MariaDB 서버, 관리자 API, AI 피드백, 비밀번호 재설정 메일, 지원 문의, FocusAI Discord 관리자 봇, Lost Ark Discord 봇, Capacitor Android 빌드 구성을 함께 포함합니다. 포트폴리오에서 볼 때 “프론트엔드 실험”보다 “운영 기능까지 확장한 학습 관리 서비스”에 가깝습니다.
+
+## 소스 기준 기능 지도
+
+| 기능 영역 | 확인한 주요 파일 | 실제로 구현된 내용 |
+| --- | --- | --- |
+| 학습 클라이언트 | `src/App.tsx`, `src/components/AppNavigation.tsx`, `src/lib/studyVision.ts`, `src/lib/focusTracking.ts` | 카메라 권한, 기기 선택, 집중 세션 시작/종료, 집중도 지표 계산, 세션 노트, 화면 전환 |
+| 리포트/PDF | `src/lib/reportPdf.ts`, `src/lib/sessionCompletion.ts` | 세션 결과 요약, 집중도 피드백, PDF 다운로드, 세션 완료 처리 |
+| 서버 진입점 | `server/src/index.ts` | 헬스체크, 부트스트랩, 인증, 계정/동의, 세션 저장, AI 피드백, 공지, 문의, 관리자 API |
+| DB 계층 | `server/src/mariadb.ts`, `server/src/store.ts`, `server/src/contracts.ts` | MariaDB 연결, 자동 마이그레이션 옵션, 사용자/세션/공지/문의/봇 설정 저장 |
+| 인증/보안 | `server/src/auth.ts`, `server/src/password-policy.ts`, `server/src/rate-limit.ts`, `server/src/security-headers.ts`, `server/src/request-origin.ts` | 세션 쿠키, 비밀번호 정책, 로그인/비밀번호 재설정 제한, 보안 헤더, 요청 Origin 검증 |
+| AI/메일 | `server/src/anthropic.ts`, `server/src/mailer.ts` | Anthropic 피드백 생성, 비용/사용량 제한 설정, SMTP 기반 비밀번호 재설정 메일 |
+| 관리자 봇 | `bot/src/*.ts`, `server/src/discord-bot-*.ts` | FocusAI 서버 상태/문의/공지/설정 관리를 위한 Discord 봇과 서버 측 런타임 관리 |
+| Lost Ark 봇 | `lostark-discord-bot/src/**/*.ts`, `server/src/lostark-discord-bot-runtime.ts` | 별도 Lost Ark 파티 모집 봇을 FocusAI 관리자 화면에서 시작/중지/설정 |
+| Android | `android/app`, `capacitor.config.ts` | Capacitor 기반 Android APK/AAB 빌드와 로컬/호스팅 자산 빌드 흐름 |
+| 검증 | `server/src/*.test.ts`, `bot/src/*.test.ts`, `docs/*.test.ts`, `tests/e2e/*.spec.ts` | 서버 보안/인증/메일/봇 런타임, 문서화된 UI 계약, 로그인 E2E 흐름 검증 |
+
+## 처음 검토할 때 볼 순서
+
+1. `src/App.tsx`에서 사용자가 실제로 경험하는 집중 세션, 리포트, 관리자 화면 흐름을 봅니다.
+2. `server/src/index.ts`에서 서비스 API 범위와 관리자 기능을 확인합니다.
+3. `.env.server.example`과 `deploy/prod.env.example`에서 운영에 필요한 설정을 확인합니다.
+4. `bot/src`와 `lostark-discord-bot/src`를 비교하면 두 Discord 봇의 역할 차이가 보입니다.
+5. `docs/*.test.ts`, `server/src/*.test.ts`, `tests/e2e`를 보면 어떤 기능을 회귀 방지 대상으로 관리했는지 확인할 수 있습니다.
+
 ## 주요 기능
 
 ### 사용자 기능
