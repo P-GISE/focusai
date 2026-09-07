@@ -1,12 +1,24 @@
 # FocusAI Web App
 
-갱신 기준일: 2026-05-21
+갱신 기준일: 2026-09-07
 
 FocusAI는 브라우저 기반 학습 세션을 기록하고, 카메라/브라우저 신호를 보조 지표로 사용해 집중도를 계산하며, 리포트와 AI 피드백, 공지, 문의, 관리자 운영 기능을 제공하는 학습 보조 애플리케이션입니다.
 
 프런트엔드는 React 19 + Vite + TypeScript, 백엔드는 Express 5 + TypeScript, 저장소는 MariaDB를 사용합니다. 운영 보조 기능으로 FocusAI 관리자 Discord 봇, Lost Ark Discord 봇 실행 관리, Capacitor 기반 Android APK 빌드를 포함합니다.
 
-최근 검증 기준은 `dc2731b Fix Android PDF export and settings layout`입니다. Android APK와 데스크톱 웹에서 Claude AI 피드백, 리포트 화면 반영, PDF 다운로드/Downloads 저장을 확인했습니다.
+이 GitHub 저장소는 공개 업로드용으로 정리한 스냅샷입니다. 실제 `.env`, Discord 봇 런타임 JSON, 로그, APK 묶음, 빌드 산출물은 포함하지 않았고, 예시 환경파일과 소스 코드 중심으로 구성했습니다.
+
+## 한눈에 보기
+
+| 항목 | 내용 |
+| --- | --- |
+| 한국어 프로젝트명 | 포커스 AI |
+| 저장소 성격 | 학습 집중도 기록/분석 웹앱 + 관리자 기능 + Android 패키징 |
+| 주요 사용자 | 학습자, 서비스 관리자 |
+| 실행 형태 | Vite 클라이언트와 Express API 서버를 함께 실행 |
+| DB | MariaDB |
+| AI 연동 | Anthropic Messages API, 없으면 로컬 분석 fallback |
+| 모바일 | Capacitor Android 프로젝트 포함 |
 
 ## 주요 기능
 
@@ -96,7 +108,6 @@ Lost Ark Discord 봇의 배포 기준 소스는 이 저장소의 `lostark-discor
 ```text
 focusai-webapp/
   android/                Capacitor Android 프로젝트와 네이티브 빌드 설정
-  apk-packages/           전달용 debug APK와 APK 묶음 zip
   src/                    React 클라이언트
   src/lib/                클라이언트 API, 타입, 카메라/비전/집중도 유틸
   server/src/             Express API 서버
@@ -111,7 +122,18 @@ focusai-webapp/
   hwp/                    과거 시스템/기능/API/운영 설계 문서 복사본
 ```
 
-생성물인 `dist/`, `server/dist/`, `bot/dist/`, `lostark-discord-bot/dist/`, `node_modules/`, `.codex-local-logs/`, `.codex-logs/`, `output/`, 개발 로그, Android `build/` 하위 파일은 직접 수정하지 않습니다. `apk-packages/`는 현재 전달용 debug APK 산출물을 보관합니다.
+생성물인 `dist/`, `server/dist/`, `bot/dist/`, `lostark-discord-bot/dist/`, `node_modules/`, `.codex-local-logs/`, `.codex-logs/`, `output/`, 개발 로그, Android `build/` 하위 파일은 직접 수정하지 않습니다. 공개 저장소에는 APK 패키지와 실제 Discord 봇 상태 JSON을 포함하지 않습니다.
+
+## 처음 써보는 순서
+
+1. MariaDB를 준비하고 `.env.server`의 DB 접속 정보를 채웁니다.
+2. `npm install`로 의존성을 설치합니다.
+3. `npm run db:init`으로 기본 schema를 생성하거나 보정합니다.
+4. `npm run dev`로 클라이언트와 API 서버를 함께 실행합니다.
+5. `http://127.0.0.1:5173`에서 회원가입 후 학습 세션을 시작합니다.
+6. 카메라 권한을 허용하면 얼굴/프레이밍/시선 보조 지표가 집중도 계산에 반영됩니다.
+7. 세션을 종료한 뒤 리포트, 메모, PDF 다운로드, AI 피드백 흐름을 확인합니다.
+8. 관리자 계정 설정 후 공지/문의/봇 설정/운영 상태 화면을 확인합니다.
 
 ## 빠른 시작
 
