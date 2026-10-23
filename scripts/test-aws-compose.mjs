@@ -20,7 +20,9 @@ let sampler
 
 function privileged(args, allowFailure = false) {
   const executable = process.getuid?.() === 0 ? args[0] : 'sudo'
-  const argumentsList = process.getuid?.() === 0 ? args.slice(1) : ['-n', ...args]
+  const composeEnvironment = ['FOCUSAI_IMAGE', 'FOCUSAI_SECRETS_DIR', 'FOCUSAI_ORIGIN', 'FOCUSAI_PORT']
+    .filter(name => environment[name] !== undefined).map(name => `${name}=${environment[name]}`)
+  const argumentsList = process.getuid?.() === 0 ? args.slice(1) : ['-n', 'env', ...composeEnvironment, ...args]
   const result = spawnSync(executable, argumentsList, { env: environment, encoding: 'utf8', timeout: 180000 })
   if (!allowFailure && result.status !== 0) throw new Error(`Privileged operation failed: ${args[0]} (exit ${result.status})`)
   return result
