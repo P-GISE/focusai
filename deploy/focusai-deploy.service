@@ -1,0 +1,14 @@
+[Unit]
+Description=Pull verified FocusAI app releases without schema changes
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/focusai
+ExecStart=/usr/bin/python3 -B /opt/focusai/deploy/aws-poll.py
+UMask=0077
+TimeoutStartSec=15min
+TimeoutStopSec=3min
+KillSignal=SIGTERM

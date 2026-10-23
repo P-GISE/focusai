@@ -1,0 +1,90 @@
+name: focusai
+
+x-app-environment: &app-environment
+  NODE_ENV: production
+  PORT: 8787
+  APP_BASE_URL: ${FOCUSAI_ORIGIN:-https://focusai.pigs0516.com}
+  CLIENT_ORIGIN: ${FOCUSAI_ORIGIN:-https://focusai.pigs0516.com}
+  MARIADB_HOST: db
+  MARIADB_PORT: 3306
+  MARIADB_DATABASE: focusai
+  MARIADB_USER: focusai_app
+  MARIADB_CONNECTION_LIMIT: 5
+  AUTO_MIGRATE_SCHEMA: "false"
+  FOCUSAI_DISABLE_DISCORD_BOT_AUTOSTART: "true"
+  SESSION_COOKIE_NAME: focusai_session
+  ANTHROPIC_DAILY_BUDGET_USD: 0
+
+services:
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
+      MARIADB_ROOT_HOST: "%"
+      MARIADB_DATABASE: focusai
+    secrets: [db_root_password]
+    volumes: [db_data:/var/lib/mysql]
+    networks: [database]
+    mem_limit: 512m
+    cpus: 0.75
+    command: ["--innodb-buffer-pool-size=128M", "--max-connections=30"]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+    logging: &logging
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}
+
+  init:
+    profiles: [init]
+    image: ${FOCUSAI_IMAGE:?Use an immutable commit-tagged image}
+    restart: "no"
+    environment:
+      <<: *app-environment
+      FOCUSAI_INITIALIZE_EMPTY_DATABASE: "yes"
+    secrets: [db_root_password, db_app_password]
+    networks: [database]
+    depends_on:
+      db: {condition: service_healthy}
+    command: ["node", "deploy/aws-init.mjs"]
+    mem_limit: 256m
+    cpus: 0.5
+    logging: *logging
+
+  app:
+    image: ${FOCUSAI_IMAGE:?Use an immutable commit-tagged image}
+    restart: unless-stopped
+    environment: *app-environment
+    secrets: [db_app_password]
+    volumes: [uploads:/app/uploads]
+    networks: [default, database]
+    ports: ["127.0.0.1:${FOCUSAI_PORT:-3400}:8787"]
+    depends_on:
+      db: {condition: service_healthy}
+    mem_limit: 512m
+    cpus: 0.75
+    pids_limit: 128
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/api/health').then(async r=>{const h=await r.json();if(!r.ok||!h.mariaEnabled||!h.mariaReachable)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 6
+    logging: *logging
+
+networks:
+  default: {}
+  database: {internal: true}
+volumes:
+  db_data: {}
+  uploads: {}
+secrets:
+  db_root_password:
+    file: ${FOCUSAI_SECRETS_DIR:?Set the protected secret directory}/db_root_password
+  db_app_password:
+    file: ${FOCUSAI_SECRETS_DIR:?Set the protected secret directory}/db_app_password

@@ -1,0 +1,60 @@
+name: AWS release candidate
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: focusai-aws-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint && npm run test:server && npm run test:bot
+      - run: python3 -B -m unittest discover -s deploy -p 'test_*.py'
+      - name: Build immutable web image
+        run: |
+          mkdir -p .omo/evidence
+          /usr/bin/time -v -o .omo/evidence/build-process-time.txt docker build -f deploy/aws.Dockerfile --build-arg REVISION="$GITHUB_SHA" -t "focusai:$GITHUB_SHA" .
+      - name: Fresh schema, auth, persistence and runtime memory
+        env:
+          FOCUSAI_IMAGE: focusai:${{ github.sha }}
+          FOCUSAI_TEST_OUTPUT: .omo/evidence/compose-integration.json
+        run: node scripts/test-aws-compose.mjs
+      - name: Export verified image
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: |
+          docker save "focusai:$GITHUB_SHA" | gzip > .omo/evidence/focusai-image.tar.gz
+          sha256sum .omo/evidence/focusai-image.tar.gz > .omo/evidence/focusai-image.sha256
+          printf '%s\n' "$GITHUB_SHA" > .omo/evidence/revision.txt
+          sha256sum server/src/mariadb.ts > .omo/evidence/schema-source.sha256
+      - name: Publish release artifact for server pull
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: focusai-app-${{ github.sha }}
+          path: |
+            .omo/evidence/focusai-image.tar.gz
+            .omo/evidence/focusai-image.sha256
+            .omo/evidence/revision.txt
+            .omo/evidence/schema-source.sha256
+          retention-days: 7
+      - name: Publish safe validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: focusai-validation-${{ github.sha }}
+          path: |
+            .omo/evidence/compose-integration.json
+            .omo/evidence/build-process-time.txt
+          if-no-files-found: error
