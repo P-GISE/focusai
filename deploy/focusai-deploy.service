@@ -10,5 +10,5 @@ WorkingDirectory=/opt/focusai
 ExecStart=/usr/bin/python3 -B /opt/focusai/deploy/aws-poll.py
 UMask=0077
 TimeoutStartSec=15min
-TimeoutStopSec=3min
+TimeoutStopSec=10min
 KillSignal=SIGTERM

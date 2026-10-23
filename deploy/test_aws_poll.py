@@ -203,6 +203,11 @@ class PullerTests(unittest.TestCase):
             self.assertNotIn('init', args)
             self.assertNotIn('down', args)
 
+    def test_systemd_allows_bounded_rollback_to_finish(self):
+        service = Path(__file__).with_name('focusai-deploy.service').read_text()
+        self.assertIn('TimeoutStopSec=10min', service)
+        self.assertIn('KillSignal=SIGTERM', service)
+
 
 if __name__ == '__main__':
     unittest.main()
