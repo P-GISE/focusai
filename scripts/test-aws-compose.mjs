@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 const output = path.resolve(process.env.FOCUSAI_TEST_OUTPUT ?? '.omo/focusai-compose-test.json')
 const secretDir = mkdtempSync(path.join(tmpdir(), 'focusai-ci-'))
+const originalOwner = statSync(secretDir)
 const project = `focusai-ci-${randomBytes(6).toString('hex')}`
 const origin = 'https://focusai.pigs0516.com'
 const port = process.env.FOCUSAI_TEST_PORT ?? '13400'
@@ -17,8 +18,15 @@ const evidence = { project, passed: false, checks: {}, sampledMemory: {}, limita
 let cookie = ''
 let sampler
 
+function privileged(args, allowFailure = false) {
+  const executable = process.getuid?.() === 0 ? args[0] : 'sudo'
+  const argumentsList = process.getuid?.() === 0 ? args.slice(1) : ['-n', ...args]
+  const result = spawnSync(executable, argumentsList, { env: environment, encoding: 'utf8', timeout: 180000 })
+  if (!allowFailure && result.status !== 0) throw new Error(`Privileged operation failed: ${args[0]} (exit ${result.status})`)
+  return result
+}
 function docker(args, allowFailure = false) {
-  const result = spawnSync('docker', args, { env: environment, encoding: 'utf8', timeout: 180000 })
+  const result = privileged(['docker', ...args], true)
   if (!allowFailure && result.status !== 0) throw new Error(`Docker operation failed: ${args[0]} ${args[1]} (exit ${result.status})`)
   return result
 }
@@ -46,12 +54,18 @@ function sampleMemory() {
   }
 }
 try {
+  record('linuxPermissionTest', process.platform === 'linux')
   record('imageSpecified', Boolean(environment.FOCUSAI_IMAGE))
   for (const name of ['db_root_password', 'db_app_password']) {
     const file = path.join(secretDir, name)
     writeFileSync(file, randomBytes(32).toString('hex'), { mode: 0o444 })
     chmodSync(file, 0o444)
   }
+  privileged(['chown', 'root:root', '--', secretDir, path.join(secretDir, 'db_root_password'), path.join(secretDir, 'db_app_password')])
+  privileged(['chmod', '0700', '--', secretDir])
+  const permissions = privileged(['stat', '--format=%u:%g:%a', '--', secretDir, path.join(secretDir, 'db_root_password'), path.join(secretDir, 'db_app_password')]).stdout.trim().split('\n')
+  record('productionSecretOwnerAndMode', JSON.stringify(permissions) === JSON.stringify(['0:0:700', '0:0:444', '0:0:444']))
+  evidence.secretPermissions = { directory: permissions[0], files: permissions.slice(1) }
   compose(['config', '-q'])
   compose(['up', '-d', '--wait', 'db'])
   const initialized = compose(['--profile', 'init', 'run', '--rm', '--no-deps', 'init'])
@@ -102,7 +116,15 @@ try {
   evidence.cleanupPassed = cleanup.status === 0
   if (!evidence.cleanupPassed) process.exitCode = 1
   const resolvedTemp = path.resolve(tmpdir()) + path.sep
-  if (secretDir.startsWith(resolvedTemp) && path.basename(secretDir).startsWith('focusai-ci-')) rmSync(secretDir, { recursive: true, force: true })
+  if (secretDir.startsWith(resolvedTemp) && path.basename(secretDir).startsWith('focusai-ci-')) {
+    const restored = privileged(['chown', '-R', `${originalOwner.uid}:${originalOwner.gid}`, '--', secretDir], true)
+    evidence.secretOwnershipRestored = restored.status === 0
+    if (restored.status === 0) rmSync(secretDir, { recursive: true, force: true })
+    else process.exitCode = 1
+  } else {
+    evidence.secretOwnershipRestored = false
+    process.exitCode = 1
+  }
   mkdirSync(path.dirname(output), { recursive: true })
   writeFileSync(output, JSON.stringify(evidence, null, 2) + '\n')
   console.log(JSON.stringify({ passed: evidence.passed, cleanupPassed: evidence.cleanupPassed, checks: Object.keys(evidence.checks).length, artifact: output }))

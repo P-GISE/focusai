@@ -13,7 +13,7 @@
 이 절의 서버 작업은 아직 실행 승인을 받아야 한다. 기존 데이터가 없는 전용 볼륨에서만 수행한다.
 
 1. 승인된 배포 경로에 Compose와 검증된 이미지 태그를 고정한다. 비밀번호는 서버에서 독립적으로 난수 생성하며 다른 프로젝트 값을 복사하지 않는다. `FOCUSAI_SECRETS_DIR`에 `db_root_password`, `db_app_password` 두 파일을 둔다. 각 값은 서로 다른 32자 이상이어야 한다. 내용을 로그에 출력하지 않는다.
-2. 호스트 비밀 디렉터리는 관리자만 접근하도록 하고, 파일은 컨테이너 node UID 1000이 읽을 수 있는 소유권과 `0400`으로 설정한다. Compose의 파일 secret은 bind mount여서 YAML의 uid/mode로 소유권을 바꿀 수 없다. 파일 권한을 실제로 검증한다. CI의 일회용 합성 비밀 파일은 별도 임시 디렉터리에서 읽기 전용으로 생성·삭제한다.
+2. 호스트 비밀 디렉터리는 `root:root` 소유 `0700`, 두 파일은 `root:root` 소유 `0444`로 설정한다. 상위 디렉터리 때문에 일반 호스트 사용자는 파일에 접근할 수 없고, 명시적으로 파일을 마운트한 DB/init/app의 해당 사용자만 읽는다. Compose 명령은 root로 실행한다. Compose의 파일 secret은 bind mount여서 YAML의 uid/mode로 소유권을 바꿀 수 없다. CI도 동일 owner/mode를 적용하고 기동 후 원래 임시 디렉터리 소유권을 복원해 정리한다. UID1000/0400을 운영 검증된 권한으로 사용하지 않는다.
 3. `FOCUSAI_IMAGE`, `FOCUSAI_SECRETS_DIR`를 지정하고 `docker compose -f deploy/aws.compose.yml up -d --wait db`로 신규 DB만 기동한다.
 4. `docker compose -f deploy/aws.compose.yml --profile init run --rm --no-deps init`을 **최초 한 번** 수행한다. 기존 테이블이 하나라도 있으면 거부한다. 현재 소스 스키마로 14개 테이블을 만들고 앱 사용자는 `SELECT, INSERT, UPDATE, DELETE`만 부여한다. 부분 초기화 실패 시 재실행으로 덮어쓰지 말고 실패 원인과 신규 볼륨 상태를 검토한다.
 5. 앱만 기동하고 실제 health의 `mariaEnabled`와 `mariaReachable`, 합성 가입·쿠키·세션 저장/조회, 외부 프로젝트 불변을 확인한다. `/api/health` HTTP 200만으로 DB 정상이라고 판정하지 않는다.
