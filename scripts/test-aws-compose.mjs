@@ -26,7 +26,7 @@ function compose(args, allowFailure = false) { return docker([...composeArgs, ..
 function record(name, condition) { assert.ok(condition, name); evidence.checks[name] = true }
 async function request(route, method = 'GET', body, useCookie = true) {
   const response = await fetch(`${base}${route}`, {
-    method, headers: { Origin: origin, ...(body ? { 'Content-Type': 'application/json' } : {}), ...(cookie && useCookie ? { Cookie: cookie } : {}) },
+    method, headers: { Origin: origin, Connection: 'close', ...(body ? { 'Content-Type': 'application/json' } : {}), ...(cookie && useCookie ? { Cookie: cookie } : {}) },
     ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(10000),
   })
   const data = await response.json()

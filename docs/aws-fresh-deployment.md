@@ -35,7 +35,13 @@
 
 S2의 기존 ubuntu GitHub 인증은 저장소 읽기 확인이 되었다. 별도 키 복사 없이 서버 pull 방식으로 검증 artifact를 가져오는 최소안을 준비한다. 운영 puller 설치/타이머 활성화는 별도 서버 작업이며, 검증된 main SHA, 성공한 정확한 workflow run, archive/revision, 현재 초기화 스키마 해시 일치를 확인해야 한다. `server/src/mariadb.ts`가 바뀌면 자동 배포를 멈추고 DB 변경 승인을 받는다. 최초 init 프로필은 정기 업데이트에서 호출하지 않는다.
 
+`deploy/aws-poll.py`와 `focusai-deploy.service/.timer`가 설치 후보이다. 승인 후 root 소유 `/opt/focusai/deploy/aws-poll.py`, `/opt/focusai/aws.compose.yml`, `/opt/focusai/.env`를 배치한다. `.env`는 `0600`, `/var/lib/focusai-deploy`는 root 전용 `0700`이며 최초 검증된 실제 SHA·서버 image ID를 `deployed.json`에 기록한다. 그 후 타이머를 활성화한다. 스크립트는 기존 ubuntu `gh` 인증으로만 artifact를 읽고 root 인증 파일을 만들지 않는다. 타이머·초기 상태·정기 실행은 아직 설치되지 않았다.
+
+보호 대상은 `db/`, `server/src/mariadb.ts`, `server/src/init-db.ts`, `deploy/`, `.github/workflows/`다. 이 중 변경이 있으면 자동 교체를 거부한다. SHA·artifact ZIP digest·내부 이미지 checksum·단일 이미지 태그·OCI revision을 검증하며, CI와 서버의 image ID 표현이 같다고 가정하지 않는다. 검증 후 서버에서 로드한 image ID를 사용한다. 다른 컨테이너 ID/시작 시각/재시작 횟수 변화도 확인한다.
+
 앱 교체는 `--no-deps`로 app 하나만 수행한다. DB·업로드 볼륨과 다른 컨테이너를 유지하고, 실패/신호 중단에는 이전 이미지로 되돌린다. 배포 중 표시와 실패 표시를 보존하여 반복 자동 실행이 실패 상태를 덮지 않도록 한다. 앱 롤백은 DB 쓰기 자체를 되돌리지 않는다. 호환되지 않는 데이터 변경은 자동 배포 대상이 아니다.
+
+타이머를 중지하면 다음 자동 배포만 멈추고 앱은 유지된다. 교체 실패 후 `in-progress` 표시는 자동 삭제하지 않는다. 실제 앱 이미지, `.env`, `deployed.json`, DB 접근, 다른 서비스 불변을 확인한 뒤 관리자가 표시를 해제해야 한다. 전원 차단/SIGKILL은 즉시 롤백을 보장하지 않으며 다음 실행을 차단한다. 초기 배포 이후 새 데이터가 쌓인 볼륨을 삭제하는 롤백은 금지한다.
 
 ## 검증 범위
 

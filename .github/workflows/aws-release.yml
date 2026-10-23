@@ -21,6 +21,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint && npm run test:server && npm run test:bot
+      - run: python3 -B -m unittest discover -s deploy -p 'test_*.py'
       - name: Build immutable web image
         run: |
           mkdir -p .omo/evidence

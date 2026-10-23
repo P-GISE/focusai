@@ -1,0 +1,12 @@
+[Unit]
+Description=Check verified FocusAI main releases
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+RandomizedDelaySec=20
+Persistent=true
+Unit=focusai-deploy.service
+
+[Install]
+WantedBy=timers.target
