@@ -1,4 +1,6 @@
 .git
+.secrets
+.omo
 node_modules
 dist
 server/dist

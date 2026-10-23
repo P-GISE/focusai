@@ -1,0 +1,46 @@
+# GitHub 정본 · 새 데이터 AWS 배포
+
+이 구성은 기존 GitLab 서비스와 DB를 복사하거나 변경하지 않는다. 새 MariaDB와 업로드 볼륨으로 시작한다. 공개 주소는 `https://focusai.pigs0516.com` 제안이며 DNS·터널 연결은 별도 승인 후 적용한다.
+
+## 실행 경계
+
+`deploy/aws.compose.yml`의 기본 프로젝트명은 `focusai`다. `app`만 `127.0.0.1:3400`을 열고 DB는 내부 전용 네트워크에 둔다. 다른 프로젝트의 네트워크·DB·볼륨을 연결하지 않는다. app 512 MiB, DB 512 MiB, 최초 init 256 MiB 제한은 검증 출발점이며 용량 보장이 아니다. 빌드는 GitHub runner에서 수행하고 공유 S2 서버에서 빌드하지 않는다.
+
+`deploy/aws.Dockerfile`은 웹과 API만 빌드한다. 봇 자동 시작은 끈다. 브라우저는 같은 주소의 `/api`를 사용한다. 런타임에는 DB 앱 비밀번호 파일만 마운트하며 root 비밀번호는 DB와 수동 init 컨테이너에만 제공한다. 정상 실행의 `AUTO_MIGRATE_SCHEMA=false`와 CRUD 전용 DB 권한으로 자동 DDL 실행을 막는다.
+
+## 최초 준비와 초기화
+
+이 절의 서버 작업은 아직 실행 승인을 받아야 한다. 기존 데이터가 없는 전용 볼륨에서만 수행한다.
+
+1. 승인된 배포 경로에 Compose와 검증된 이미지 태그를 고정한다. 비밀번호는 서버에서 독립적으로 난수 생성하며 다른 프로젝트 값을 복사하지 않는다. `FOCUSAI_SECRETS_DIR`에 `db_root_password`, `db_app_password` 두 파일을 둔다. 각 값은 서로 다른 32자 이상이어야 한다. 내용을 로그에 출력하지 않는다.
+2. 호스트 비밀 디렉터리는 관리자만 접근하도록 하고, 파일은 컨테이너 node UID 1000이 읽을 수 있는 소유권과 `0400`으로 설정한다. Compose의 파일 secret은 bind mount여서 YAML의 uid/mode로 소유권을 바꿀 수 없다. 파일 권한을 실제로 검증한다. CI의 일회용 합성 비밀 파일은 별도 임시 디렉터리에서 읽기 전용으로 생성·삭제한다.
+3. `FOCUSAI_IMAGE`, `FOCUSAI_SECRETS_DIR`를 지정하고 `docker compose -f deploy/aws.compose.yml up -d --wait db`로 신규 DB만 기동한다.
+4. `docker compose -f deploy/aws.compose.yml --profile init run --rm --no-deps init`을 **최초 한 번** 수행한다. 기존 테이블이 하나라도 있으면 거부한다. 현재 소스 스키마로 14개 테이블을 만들고 앱 사용자는 `SELECT, INSERT, UPDATE, DELETE`만 부여한다. 부분 초기화 실패 시 재실행으로 덮어쓰지 말고 실패 원인과 신규 볼륨 상태를 검토한다.
+5. 앱만 기동하고 실제 health의 `mariaEnabled`와 `mariaReachable`, 합성 가입·쿠키·세션 저장/조회, 외부 프로젝트 불변을 확인한다. `/api/health` HTTP 200만으로 DB 정상이라고 판정하지 않는다.
+
+## 선택 외부 기능
+
+| 기능 | 필요한 설정 이름 | 발급·준비 주체 | 미설정 상태 |
+|---|---|---|---|
+| 기본 회원가입·집중 세션·통계 | 신규 MariaDB 자격 증명 | 이 서비스 전용으로 서버에서 생성 | DB가 없으면 사용할 수 없음 |
+| Claude AI 코치 | `ANTHROPIC_API_KEY`, 모델·단가·일일 한도/예산 | 사용자 소유 Anthropic Console | `source=local`, 화면에 로컬 분석 안내. 외부 AI 호출 성공 아님 |
+| 비밀번호 재설정 메일 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_FROM`, 필요 시 `SMTP_USER`, `SMTP_PASSWORD` | 사용자 소유 메일 제공자 | 메일 전달 미검증·사용 불가 |
+| Discord 봇 | 봇 토큰·client/guild ID·설정 암호화 키 | 사용자 소유 Discord Developer Portal | 자동 시작 비활성 |
+
+기본 배포에는 AI·SMTP·Discord 자격 증명을 넣지 않는다. 필요 기능은 별도 서버 비밀 설정을 검토하고 추가한다. 키 이름이 존재하는 것과 외부 계정 인증/사용 가능 여부는 별개다.
+
+## CI 및 이후 자동 배포
+
+`.github/workflows/aws-release.yml`은 PR과 main에서 회귀 검사·Docker 이미지 빌드·격리 Compose 합성 시험을 수행한다. main의 검증 통과 후에만 commit-tagged 이미지 archive, SHA-256, revision, DB 스키마 소스 해시 artifact를 발행한다. 이 단계만으로 운영 자동 배포가 설치된 것은 아니다.
+
+S2의 기존 ubuntu GitHub 인증은 저장소 읽기 확인이 되었다. 별도 키 복사 없이 서버 pull 방식으로 검증 artifact를 가져오는 최소안을 준비한다. 운영 puller 설치/타이머 활성화는 별도 서버 작업이며, 검증된 main SHA, 성공한 정확한 workflow run, archive/revision, 현재 초기화 스키마 해시 일치를 확인해야 한다. `server/src/mariadb.ts`가 바뀌면 자동 배포를 멈추고 DB 변경 승인을 받는다. 최초 init 프로필은 정기 업데이트에서 호출하지 않는다.
+
+앱 교체는 `--no-deps`로 app 하나만 수행한다. DB·업로드 볼륨과 다른 컨테이너를 유지하고, 실패/신호 중단에는 이전 이미지로 되돌린다. 배포 중 표시와 실패 표시를 보존하여 반복 자동 실행이 실패 상태를 덮지 않도록 한다. 앱 롤백은 DB 쓰기 자체를 되돌리지 않는다. 호환되지 않는 데이터 변경은 자동 배포 대상이 아니다.
+
+## 검증 범위
+
+`node scripts/test-aws-compose.mjs`는 새 임시 Compose 프로젝트에서 14개 테이블 생성, 재초기화 거부, CRUD 전용 권한, 합성 가입/쿠키/로그인, 세션 저장·조회, 로컬 AI 응답, 앱 재기동 후 DB·데이터 보존을 검사한다. 종료 시 그 임시 프로젝트의 볼륨만 삭제한다. 증거에는 결과 boolean과 메모리 표본만 쓰며 비밀번호·쿠키·사용자 본문은 저장하지 않는다.
+
+`docker stats` 표본은 관측 최고치이며 전체 순간 peak 보장이 아니다. `build-process-time.txt`의 RSS는 Docker CLI 프로세스 지표로 빌드 컨테이너 전체 peak를 뜻하지 않는다. 실제 카메라, 브라우저 쿠키 저장, 외부 AI·메일·봇, 공개 DNS/TLS 흐름은 별도 검증한다.
+
+공식 근거: [MariaDB 초기화 환경변수](https://mariadb.com/docs/server/server-management/automated-mariadb-deployment-and-administration/docker-and-mariadb/mariadb-server-docker-official-image-environment-variables), [Compose secrets](https://docs.docker.com/compose/how-tos/use-secrets/), [파일 secret 권한 제한](https://docs.docker.com/reference/compose-file/services/).
