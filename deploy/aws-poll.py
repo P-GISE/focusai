@@ -70,6 +70,16 @@ def assert_environment_permissions(path):
         raise DeployError('unsafe_environment_permissions')
 
 
+def sync_directory(path):
+    if os.name == 'nt':
+        return
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 def atomic_write(path, content):
     fd, temporary = tempfile.mkstemp(prefix='.deploy-', dir=path.parent)
     try:
@@ -78,6 +88,7 @@ def atomic_write(path, content):
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
+        sync_directory(path.parent)
     finally:
         Path(temporary).unlink(missing_ok=True)
 
@@ -179,6 +190,7 @@ def replace_release(previous, sha, image, run_id, original_environment, preserve
         atomic_write(STATE / 'deployed.json', json.dumps(previous) + '\n')
         raise
     (STATE / 'in-progress').unlink()
+    sync_directory(STATE)
 
 
 def poll():
