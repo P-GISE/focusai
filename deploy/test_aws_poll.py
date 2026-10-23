@@ -139,6 +139,20 @@ class PullerTests(unittest.TestCase):
             self.assertEqual(target.read_text(), 'new')
             self.assertEqual([p.name for p in Path(temp).iterdir()], ['state'])
 
+    def test_atomic_write_syncs_parent_after_replacement(self):
+        with tempfile.TemporaryDirectory() as temp:
+            target = Path(temp) / 'state'
+            observed = []
+            with patch.object(poller, 'sync_directory', side_effect=lambda parent: observed.append((parent, target.read_text()))):
+                poller.atomic_write(target, 'new')
+            self.assertEqual(observed, [(Path(temp), 'new')])
+
+    def test_posix_directory_sync_closes_descriptor_on_failure(self):
+        with patch.object(poller.os, 'name', 'posix'), patch.object(poller.os, 'O_DIRECTORY', 65536, create=True), patch.object(poller.os, 'open', return_value=17), patch.object(poller.os, 'fsync', side_effect=OSError('synthetic sync failure')), patch.object(poller.os, 'close') as close:
+            with self.assertRaises(OSError):
+                poller.sync_directory('synthetic directory')
+            close.assert_called_once_with(17)
+
     def test_release_state_commit_and_failure_recovery_are_durable(self):
         for fail in (None, 'health', 'preserved', 'state', 'signal'):
             with self.subTest(fail=fail), tempfile.TemporaryDirectory() as temp:
@@ -188,6 +202,11 @@ class PullerTests(unittest.TestCase):
                 self.assertIn(flag, args)
             self.assertNotIn('init', args)
             self.assertNotIn('down', args)
+
+    def test_systemd_allows_bounded_rollback_to_finish(self):
+        service = Path(__file__).with_name('focusai-deploy.service').read_text()
+        self.assertIn('TimeoutStopSec=10min', service)
+        self.assertIn('KillSignal=SIGTERM', service)
 
 
 if __name__ == '__main__':
