@@ -1,6 +1,6 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import type { PoolConnection } from 'mariadb'
-import { adminEmailAllowlist, env } from './env.js'
+import { env } from './env.js'
 import { withConnection } from './mariadb.js'
 import { resolveSessionCreatedAt } from './session-time.js'
 import type {
@@ -183,12 +183,8 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase()
 }
 
-function isAdminEmail(email: string) {
-  return adminEmailAllowlist.has(normalizeEmail(email))
-}
-
-function resolveAdminFlag(rawValue: unknown, email: string) {
-  return Number(rawValue ?? 0) === 1 || isAdminEmail(email)
+function resolveAdminFlag(rawValue: unknown) {
+  return Number(rawValue ?? 0) === 1
 }
 
 function mapAuthUser(row: DbRow): AuthenticatedUser {
@@ -197,7 +193,7 @@ function mapAuthUser(row: DbRow): AuthenticatedUser {
     userId: Number(row.id),
     email,
     name: String(row.display_name),
-    isAdmin: resolveAdminFlag(row.is_admin, email),
+    isAdmin: resolveAdminFlag(row.is_admin),
     source: 'mariadb',
   }
 }
@@ -539,21 +535,6 @@ async function loadPasswordHash(connection: PoolConnection, userId: number) {
   return String(rows[0]?.password_hash ?? '')
 }
 
-async function elevateAdminFlagIfNeeded(connection: PoolConnection, userId: number, email: string) {
-  if (!isAdminEmail(email)) {
-    return
-  }
-
-  await connection.query(
-    `
-      UPDATE users
-      SET is_admin = 1, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND is_admin <> 1
-    `,
-    [userId],
-  )
-}
-
 async function assertSessionOwnership(
   connection: PoolConnection,
   userId: number,
@@ -655,7 +636,7 @@ export async function registerAccount(payload: RegisterPayload): Promise<Authent
           hashPassword(payload.password),
           payload.name,
           payload.dailyGoalHours,
-          isAdminEmail(normalizedEmail) ? 1 : 0,
+          0,
           CONSENT_VERSION,
         ],
       ) as InsertResult
@@ -671,7 +652,7 @@ export async function registerAccount(payload: RegisterPayload): Promise<Authent
         userId,
         email: normalizedEmail,
         name: payload.name,
-        isAdmin: isAdminEmail(normalizedEmail),
+        isAdmin: false,
         source: 'mariadb',
       }
     } catch (error) {
@@ -700,7 +681,6 @@ export async function authenticateAccount(email: string, password: string): Prom
       return null
     }
 
-    await elevateAdminFlagIfNeeded(connection, Number(candidate.id), String(candidate.email))
     return mapAuthUser(candidate)
   })
 }
@@ -749,7 +729,6 @@ export async function resolveAuthSession(token: string): Promise<AuthenticatedUs
       return null
     }
 
-    await elevateAdminFlagIfNeeded(connection, Number(sessionUser.id), String(sessionUser.email))
     await connection.query(
       `
         UPDATE auth_sessions
@@ -890,7 +869,7 @@ export async function getBootstrap(userId: number): Promise<BootstrapPayload> {
         dailyGoalHours: resolvedDailyGoalHours,
         subjects,
         authSource: 'mariadb',
-        isAdmin: resolveAdminFlag(firstProfile.is_admin, String(firstProfile.email)),
+        isAdmin: resolveAdminFlag(firstProfile.is_admin),
         consentVersion: String(firstProfile.consent_version ?? CONSENT_VERSION),
         privacyConsentAt: firstProfile.privacy_consent_at
           ? parseDateValue(firstProfile.privacy_consent_at).toISOString()
@@ -1858,10 +1837,6 @@ export async function updateAdminUserRole(actorUserId: number, targetUserId: num
       const displayName = String(target.display_name)
       const persistedAdmin = Number(target.is_admin ?? 0) === 1
 
-      if (!isAdmin && isAdminEmail(email)) {
-        throw new Error('ALLOWLIST_ADMIN_LOCKED')
-      }
-
       if (!isAdmin && persistedAdmin) {
         const [adminCountRow] = await connection.query<DbRow[]>(
           `
@@ -2215,7 +2190,7 @@ export async function getAdminOverview(): Promise<AdminOverviewPayload> {
       id: String(row.id),
       name: String(row.display_name),
       email: String(row.email),
-      isAdmin: resolveAdminFlag(row.is_admin, String(row.email)),
+      isAdmin: resolveAdminFlag(row.is_admin),
       createdAt: parseDateValue(row.created_at).toISOString(),
       lastSessionAt: toIsoOrNull(row.last_session_at),
     }))
@@ -2233,7 +2208,7 @@ export async function getAdminOverview(): Promise<AdminOverviewPayload> {
       id: String(row.id),
       name: String(row.display_name),
       email: String(row.email),
-      isAdmin: resolveAdminFlag(row.is_admin, String(row.email)),
+      isAdmin: resolveAdminFlag(row.is_admin),
       createdAt: parseDateValue(row.created_at).toISOString(),
       lastSessionAt: toIsoOrNull(row.last_session_at),
       sessionCount: Number(row.session_count ?? 0),

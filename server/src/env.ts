@@ -221,12 +221,6 @@ export const clientOrigins = appendCapacitorClientOrigin(parseOriginList(env.CLI
 
 assertRuntimeEnv(env, clientOrigins)
 
-export const adminEmailAllowlist = new Set(
-  env.ADMIN_EMAILS.split(',')
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean),
-)
-
 export const runtimeFlags = {
   mariaEnabled: Boolean(env.MARIADB_HOST && env.MARIADB_USER && env.MARIADB_DATABASE),
   autoMigrateSchema:
