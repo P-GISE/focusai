@@ -7,7 +7,7 @@ type PasswordResetMailPayload = {
   token: string
 }
 
-let transporter: nodemailer.Transporter | null = null
+let transporter: ReturnType<typeof nodemailer.createTransport> | null = null
 
 function getTransporter() {
   if (!runtimeFlags.smtpEnabled || !env.SMTP_HOST || !env.SMTP_FROM) {
