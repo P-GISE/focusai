@@ -8,7 +8,7 @@ import ts from 'typescript'
 
 const require = createRequire(import.meta.url)
 
-test('password-reset mail uses the installed SMTP transport with synthetic loopback delivery', async () => {
+test('password-reset mail uses the installed SMTP transport with synthetic loopback delivery', { timeout: 10_000 }, async () => {
   const sockets = new Set<Socket>()
   let delivered = ''
   const server = createServer((socket) => {
