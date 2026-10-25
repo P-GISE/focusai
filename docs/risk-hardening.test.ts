@@ -34,34 +34,25 @@ test('docker build context excludes local secrets, nested env files, logs, and b
   }
 })
 
-test('production deployment uses the same server environment file convention as local development', () => {
-  const composeSource = readFileSync(resolve(repoRoot, 'docker-compose.yml'), 'utf8')
-  const ciSource = readFileSync(resolve(repoRoot, '.gitlab-ci.yml'), 'utf8')
-  const deploymentSource = readFileSync(resolve(repoRoot, 'DEPLOYMENT.md'), 'utf8')
+test('AWS deployment keeps database secrets private and disables automatic schema changes', () => {
+  const composeSource = readFileSync(resolve(repoRoot, 'deploy/aws.compose.yml'), 'utf8')
 
-  assert.match(composeSource, /env_file:\s*\r?\n\s*-\s*\.env\.server/)
-  assert.match(ciSource, /SERVER_ENV_FILE: \.env\.server/)
-  assert.match(ciSource, /LEGACY_SERVER_ENV_FILE: \.env/)
-  assert.match(ciSource, /Migrating legacy \.env to \.env\.server/)
-  assert.doesNotMatch(ciSource, /FATAL \.env missing/)
-  assert.match(deploymentSource, /\/data1\/docker\/focusai\/\.env\.server 작성/)
-  assert.match(deploymentSource, /\/data1\/docker\/focusai\/\.env\.server`로 두고/)
-  assert.match(deploymentSource, /`FATAL \$SERVER_ENV_FILE missing`/)
+  assert.match(composeSource, /MARIADB_ROOT_PASSWORD_FILE:\s*\/run\/secrets\/db_root_password/)
+  assert.match(composeSource, /secrets:\s*\[db_app_password\]/)
+  assert.match(composeSource, /AUTO_MIGRATE_SCHEMA:\s*"false"/)
+  assert.match(composeSource, /127\.0\.0\.1:\$\{FOCUSAI_PORT:-3400\}:8787/)
+  assert.match(composeSource, /database:\s*\{internal: true\}/)
 })
 
-test('CI verify scope stays explicit while test and build remain local release checks', () => {
-  const ciSource = readFileSync(resolve(repoRoot, '.gitlab-ci.yml'), 'utf8')
-  const readmeSource = readFileSync(resolve(repoRoot, 'README.md'), 'utf8')
-  const deploymentSource = readFileSync(resolve(repoRoot, 'DEPLOYMENT.md'), 'utf8')
-  const verifyJob = ciSource.slice(ciSource.indexOf('verify:'), ciSource.indexOf('deploy_production:'))
+test('AWS release CI verifies code and fresh runtime before publishing a main artifact', () => {
+  const ciSource = readFileSync(resolve(repoRoot, '.github/workflows/aws-release.yml'), 'utf8')
 
-  assert.match(verifyJob, /-\s*npm ci/)
-  assert.match(verifyJob, /-\s*npm run lint/)
-  assert.doesNotMatch(verifyJob, /-\s*npm test/)
-  assert.doesNotMatch(verifyJob, /-\s*npm run build/)
-  assert.match(readmeSource, /verify 단계는 실제로 `npm ci`, `npm run lint`만 실행합니다/)
-  assert.match(deploymentSource, /verify 단계.*`npm ci`, `npm run lint` 실행/s)
-  assert.match(deploymentSource, /배포 전에는 로컬에서 `npm test`와 `npm run build`를 별도로 실행/)
+  assert.match(ciSource, /npm ci/)
+  assert.match(ciSource, /npm run lint/)
+  assert.match(ciSource, /npm (?:run test:server|test)/)
+  assert.match(ciSource, /npm (?:run test:bot|test)/)
+  assert.match(ciSource, /node scripts\/test-aws-compose\.mjs/)
+  assert.match(ciSource, /if: github\.ref == 'refs\/heads\/main' && github\.event_name != 'pull_request'/)
 })
 
 test('local web-only dev script starts client and API without the Discord bot', () => {
