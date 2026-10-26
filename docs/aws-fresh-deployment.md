@@ -1,5 +1,11 @@
 # GitHub 정본 · 새 데이터 AWS 배포
 
+## 2026-10-26 배포기 신호 처리 소스 동기화
+
+운영에 이미 적용한 신호 구분 보완을 제품 helper에도 반영했다. TERM/INT는 건강 검사 재시도에 삼켜지지 않고 실제 release 롤백으로 전달된다. 이전 환경·이미지·deployed.json을 복원하고 in-progress 표시를 유지해 다음 자동 실행을 막으며, 일반 일시 오류는 기존 재시도를 유지한다. 로컬 기존 소스에서 신호2개 실패를 재현한 뒤 배포기 전체19개 검사를 통과했다. DB·Compose·unit·timer는 변경하지 않았다.
+
+이 helper와 검사도 deploy/ 보호 경로에 속한다. 병합만으로 정상 앱 배포가 계속된다고 가정하지 않고 정확한 새 CI·artifact·현재 baseline을 검토해 별도 승격한다. 실제 이미지 교체와 검증 없이 deployed SHA를 조작하거나 guard를 제외하지 않는다. GitHub 병합·CI·운영 승격은 이 로컬 결과와 별도다. 과거 mutable bundle·설치 manifest는 보존하고 최종 merge SHA에서 새 디렉터리의 관리 묶음을 만든다. 기존 fresh installer나 prepare-bundle.py를 기존 경로에서 다시 실행하지 않는다.
+
 이 구성은 기존 GitLab 서비스와 DB를 복사하거나 변경하지 않는다. 새 MariaDB와 업로드 볼륨으로 시작한다. 공개 주소는 `https://focusai.pigs0516.com` 제안이며 DNS·터널 연결은 별도 승인 후 적용한다.
 
 ## 실행 경계

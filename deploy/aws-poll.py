@@ -24,6 +24,10 @@ class DeployError(Exception):
     pass
 
 
+class Interrupted(DeployError):
+    pass
+
+
 def command(args, *, output=None, timeout=120):
     result = subprocess.run(args, stdout=output or subprocess.PIPE, stderr=subprocess.DEVNULL,
                             timeout=timeout, check=False)
@@ -124,6 +128,8 @@ def health(image):
                                              'http://127.0.0.1:3400/api/health']))
                 if result.get('mariaEnabled') and result.get('mariaReachable'):
                     return
+            except Interrupted:
+                raise
             except (DeployError, ValueError, subprocess.TimeoutExpired):
                 pass
         if attempt < 11:
@@ -275,7 +281,7 @@ def poll():
 
 
 def interrupted(_signum, _frame):
-    raise DeployError('deployment_interrupted')
+    raise Interrupted('deployment_interrupted')
 
 
 def main():
