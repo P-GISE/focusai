@@ -22,8 +22,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 22
+          node-version: '24'
           cache: npm
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Runtime image security gate regressions
+        run: python -m unittest discover -s scripts/security -p test_image_gate.py -v
       - run: npm ci
       - run: npm run lint && npm run test:server && npm run test:bot
       - run: python3 -B -m unittest discover -s deploy -p 'test_*.py'
@@ -31,6 +36,12 @@ jobs:
         run: |
           mkdir -p .omo/evidence
           /usr/bin/time -v -o .omo/evidence/build-process-time.txt docker build -f deploy/aws.Dockerfile --build-arg REVISION="$GITHUB_SHA" -t "focusai:$GITHUB_SHA" .
+      - name: Gate the exact web runtime OS and Node libraries
+        run: |
+          docker run --rm --network none --entrypoint sh "focusai:$GITHUB_SHA" -ec 'test -s /etc/alpine-release; for tool in npm npx yarn yarnpkg; do test -z "$(command -v "$tool")"; done; node --version >/dev/null'
+          docker run --rm --network none --entrypoint node "focusai:$GITHUB_SHA" --input-type=module -e 'await import("mariadb"); await import("discord.js")'
+          image_id=$(docker image inspect "focusai:$GITHUB_SHA" --format '{{.Id}}')
+          bash scripts/security/scan-image.sh "$image_id"
       - name: Fresh schema, auth, persistence and runtime memory
         env:
           FOCUSAI_IMAGE: focusai:${{ github.sha }}
