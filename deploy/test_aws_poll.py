@@ -84,6 +84,68 @@ class PullerTests(unittest.TestCase):
         with self.assertRaises(poller.DeployError):
             poller.replace_app(OLD, NEW, lambda _: None, lambda _: None, health, lambda: None)
 
+    def test_real_health_interrupt_restores_release_state_without_retry(self) -> None:
+        for number in (signal.SIGTERM, signal.SIGINT):
+            with self.subTest(signal=number), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory) / 'root'
+                state = Path(directory) / 'state'
+                root.mkdir()
+                state.mkdir()
+                previous = {'sha': 'd' * 40, 'image': OLD}
+                environment = 'FOCUSAI_IMAGE=' + OLD + '\nSYNTHETIC=retained\n'
+                (root / '.env').write_text(environment)
+                (state / 'deployed.json').write_text(json.dumps(previous))
+                current = OLD
+                switched = []
+                fired = False
+
+                def switch(image: str) -> None:
+                    nonlocal current
+                    current = image
+                    switched.append(image)
+
+                def inspect(_name: str):
+                    return {'Image': current, 'State': {'Running': True, 'OOMKilled': False,
+                                                       'Health': {'Status': 'healthy'}}}
+
+                def command(_args, **_kwargs) -> str:
+                    nonlocal fired
+                    if current == NEW and not fired:
+                        fired = True
+                        poller.interrupted(number, None)
+                    return json.dumps({'mariaEnabled': True, 'mariaReachable': True})
+
+                with patch.object(poller, 'ROOT', root), patch.object(poller, 'STATE', state), \
+                     patch.object(poller, 'switch_app', side_effect=switch), \
+                     patch.object(poller, 'inspect', side_effect=inspect), \
+                     patch.object(poller, 'command', side_effect=command), \
+                     patch.object(poller.time, 'sleep') as sleep, \
+                     patch.object(poller, 'other_containers') as preserved:
+                    with self.assertRaisesRegex(poller.DeployError, '^deployment_interrupted$'):
+                        poller.replace_release(previous, SHA, NEW, 1, environment, preserved)
+                    with patch.object(poller, 'api') as api:
+                        self.assertEqual(poller.poll(), 'blocked_after_interrupted_or_failed_deployment')
+                    api.assert_not_called()
+                self.assertTrue(fired)
+                self.assertEqual(switched, [NEW, OLD])
+                self.assertEqual(current, OLD)
+                self.assertEqual((root / '.env').read_text(), environment)
+                self.assertEqual(json.loads((state / 'deployed.json').read_text()), previous)
+                self.assertEqual(json.loads((state / 'in-progress').read_text()), {'sha': SHA, 'previous': previous})
+                self.assertEqual((state / 'previous-environment').read_text(), environment)
+                preserved.assert_not_called()
+                sleep.assert_not_called()
+
+    def test_real_health_transient_error_still_retries(self) -> None:
+        item = {'Image': NEW, 'State': {'Running': True, 'OOMKilled': False, 'Health': {'Status': 'healthy'}}}
+        with patch.object(poller, 'inspect', return_value=item), \
+             patch.object(poller, 'command', side_effect=[poller.DeployError('temporary'),
+                 json.dumps({'mariaEnabled': True, 'mariaReachable': True})]) as command, \
+             patch.object(poller.time, 'sleep') as sleep:
+            poller.health(NEW)
+        self.assertEqual(command.call_count, 2)
+        sleep.assert_called_once_with(5)
+
     def test_interrupted_marker_blocks_before_any_api_or_command(self):
         with tempfile.TemporaryDirectory() as temp, patch.object(poller, 'STATE', Path(temp)), patch.object(poller, 'api') as api:
             (Path(temp) / 'in-progress').write_text('synthetic marker')
