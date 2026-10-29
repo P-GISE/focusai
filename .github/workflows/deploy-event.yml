@@ -1,0 +1,119 @@
+name: FocusAI verified event deploy
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful main push CI run ID to retry
+        required: true
+        type: string
+      sha:
+        description: Exact 40-character main head SHA of that run
+        required: true
+        type: string
+  workflow_run:
+    workflows: [AWS release candidate]
+    types: [completed]
+    branches: [main]
+permissions:
+  actions: read
+concurrency:
+  group: focusai-production-event-deploy
+  cancel-in-progress: false
+  queue: max
+jobs:
+  deploy:
+    if: >-
+      ${{ github.repository == 'P-GISE/focusai' &&
+          ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+           (github.event_name == 'workflow_run' && github.event.action == 'completed' &&
+            github.event.workflow_run.event == 'push' &&
+            github.event.workflow_run.head_branch == 'main' &&
+            github.event.workflow_run.status == 'completed' &&
+            github.event.workflow_run.conclusion == 'success' &&
+            github.event.workflow_run.head_repository.full_name == github.repository)) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Validate event and call project-only entrypoint
+        env:
+          DEPLOY_TARGET: ${{ secrets.FOCUSAI_DEPLOY_TARGET }}
+          DEPLOY_SSH_KEY: ${{ secrets.FOCUSAI_DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.FOCUSAI_DEPLOY_KNOWN_HOSTS }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          ssh_dir=$(mktemp -d)
+          trap 'rm -rf -- "$ssh_dir"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$ssh_dir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          chmod 600 "$ssh_dir/key" "$ssh_dir/known_hosts"
+          export DEPLOY_KEY_FILE="$ssh_dir/key" DEPLOY_HOSTS_FILE="$ssh_dir/known_hosts"
+          unset DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS
+          python3 - <<'PY'
+          import json, os, re, subprocess, sys, time, urllib.request
+          with open(os.environ['GITHUB_EVENT_PATH']) as stream:
+              event = json.load(stream)
+          repo = 'P-GISE/focusai'
+          assert event.get('repository', {}).get('full_name') == repo
+          if os.environ['GITHUB_EVENT_NAME'] == 'workflow_dispatch':
+              assert os.environ['GITHUB_REF'] == 'refs/heads/main'
+              inputs = event.get('inputs', {})
+              assert re.fullmatch('[1-9][0-9]*', inputs.get('run_id', ''))
+              assert re.fullmatch('[0-9a-f]{40}', inputs.get('sha', ''))
+              expected_id, expected_sha = int(inputs['run_id']), inputs['sha']
+          else:
+              assert os.environ['GITHUB_EVENT_NAME'] == 'workflow_run'
+              assert event.get('action') == 'completed'
+              payload = event.get('workflow_run', {})
+              assert type(payload.get('id')) is int and payload['id'] > 0
+              assert isinstance(payload.get('head_sha'), str) and re.fullmatch('[0-9a-f]{40}', payload['head_sha'])
+              expected_id, expected_sha = payload['id'], payload['head_sha']
+          request = urllib.request.Request(
+              'https://api.github.com/repos/' + repo + '/actions/runs/' + str(expected_id),
+              headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                       'Accept': 'application/vnd.github+json'})
+          with urllib.request.urlopen(request, timeout=30) as response:
+              r = json.load(response)
+          assert type(r.get('id')) is int and r['id'] == expected_id and r.get('head_sha') == expected_sha
+          assert r.get('repository', {}).get('full_name') == repo
+          assert r.get('head_repository', {}).get('full_name') == repo
+          assert r.get('event') == 'push' and r.get('head_branch') == 'main'
+          assert r.get('path') == '.github/workflows/aws-release.yml'
+          assert r.get('status') == 'completed' and r.get('conclusion') == 'success'
+          assert isinstance(r.get('head_sha'), str) and re.fullmatch('[0-9a-f]{40}', r['head_sha'])
+          assert type(r.get('id')) is int and r['id'] > 0
+          target = os.environ['DEPLOY_TARGET']
+          assert re.fullmatch('[a-zA-Z0-9_.@-]+', target) and not target.startswith('-')
+          retry_deadline = time.monotonic() + 1200
+          while True:
+              if time.monotonic() >= retry_deadline:
+                  print('event_deploy_failed:lock_retry_budget_exhausted', file=sys.stderr)
+                  raise SystemExit(75)
+              response = subprocess.run(['ssh', '-oBatchMode=yes', '-oStrictHostKeyChecking=yes',
+                                         '-oConnectTimeout=15', '-oIdentitiesOnly=yes',
+                                         '-oUserKnownHostsFile=' + os.environ['DEPLOY_HOSTS_FILE'],
+                                         '-i', os.environ['DEPLOY_KEY_FILE'], target,
+                                         'event-deploy-focusai', r['head_sha'], str(r['id'])],
+                                        check=False, capture_output=True, text=True, timeout=1200)
+              lock_timeout = response.returncode == 75 and response.stderr.strip() == 'event_deploy_failed:lock_timeout'
+              if not lock_timeout:
+                  break
+              remaining = retry_deadline - time.monotonic()
+              if remaining <= 0:
+                  print('event_deploy_failed:lock_retry_budget_exhausted', file=sys.stderr)
+                  raise SystemExit(75)
+              time.sleep(min(15, remaining))
+          if response.returncode:
+              print(response.stderr, file=sys.stderr)
+              raise SystemExit(response.returncode)
+          verified = json.loads(response.stdout)
+          assert verified.get('status') in ('verified', 'already_deployed')
+          assert verified.get('sha') == r['head_sha'] and verified.get('requested_run_id') == r['id']
+          assert type(verified.get('deployed_run_id')) is int and verified['deployed_run_id'] > 0
+          assert verified.get('artifact_run_id') == verified['deployed_run_id']
+          if verified['status'] == 'verified':
+              assert verified['deployed_run_id'] == r['id']
+          assert re.fullmatch('sha256:[0-9a-f]{64}', verified.get('image', ''))
+          PY
