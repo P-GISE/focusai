@@ -56,3 +56,12 @@ S2의 기존 ubuntu GitHub 인증은 저장소 읽기 확인이 되었다. 별�
 `docker stats` 표본은 관측 최고치이며 전체 순간 peak 보장이 아니다. `build-process-time.txt`의 RSS는 Docker CLI 프로세스 지표로 빌드 컨테이너 전체 peak를 뜻하지 않는다. 실제 카메라, 브라우저 쿠키 저장, 외부 AI·메일·봇, 공개 DNS/TLS 흐름은 별도 검증한다.
 
 공식 근거: [MariaDB 초기화 환경변수](https://mariadb.com/docs/server/server-management/automated-mariadb-deployment-and-administration/docker-and-mariadb/mariadb-server-docker-official-image-environment-variables), [Compose secrets](https://docs.docker.com/compose/how-tos/use-secrets/), [파일 secret 권한 제한](https://docs.docker.com/reference/compose-file/services/).
+
+
+## GitHub 이벤트 배포 전환 준비 — 2026-10-29
+
+이 절은 위 최초 준비·타이머 설치 후보의 당시 기록과 구분한다. `.github/workflows/deploy-event.yml`은 main push의 **AWS release candidate** 완료 이벤트와 main의 수동 recovery를 받는다. 두 경로 모두 GitHub REST에서 정확한 run ID를 다시 읽어 `P-GISE/focusai`·head repository·main·push·`.github/workflows/aws-release.yml`·완료·성공·SHA를 검증한다. PR 또는 다른 branch의 run은 배포하지 않으며 특권 job은 소스를 checkout하지 않는다.
+
+프로젝트 전용 `FOCUSAI_DEPLOY_SSH_KEY`, `FOCUSAI_DEPLOY_KNOWN_HOSTS`, `FOCUSAI_DEPLOY_TARGET` 세 repository secret과 S2의 제한 SSH entry 설치가 필요하다. 고정 명령은 `event-deploy-focusai <SHA40> <run ID>`다. strict host pinning·일시 key0600·종료 정리를 사용한다. 같은 프로젝트 실행은 취소 없이 queue에 쌓이고, 원격 lock timeout(exit75 및 정확한 오류)만 최대20분 재시도한다. 요청 SHA/run·실제 배포 run/artifact run·image digest 영수증을 확인한다. 수동 복구에는 성공한 main push CI의 정확한 run ID와 SHA를 입력한다.
+
+현재는 로컬 candidate 준비 단계이며 이 변경에서 키·secret 등록, S2 설치, 실제 workflow_run 배포·health 검증을 수행하지 않았다. 실제 운영 helper·현재 배포 baseline을 별도로 확인하고 기존 Node/이미지 보안 수정과 이번 workflow·CI 보호 경로의 전체 차이를 검토한 뒤 최초 승격해야 한다. 기존 보안 검사·DB 스키마 해시·manager→deploy 잠금·실패 롤백을 유지하며 가드를 제외하지 않는다. 실제 새 push CI→이벤트→제한 command→운영 SHA/run/image/health 검증 전 기존 timer는 유지한다. 서버 전체 재부팅·DB/Compose/SMTP/Discord 변경은 없다.

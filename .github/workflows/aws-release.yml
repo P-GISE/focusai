@@ -27,6 +27,8 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12'
+      - name: Event deployment contract regressions
+        run: python -B -m unittest discover -s scripts/deploy -p test_event_workflow.py -v
       - name: Runtime image security gate regressions
         run: python -m unittest discover -s scripts/security -p test_image_gate.py -v
       - run: npm ci
