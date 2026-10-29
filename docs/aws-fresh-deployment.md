@@ -64,4 +64,10 @@ S2의 기존 ubuntu GitHub 인증은 저장소 읽기 확인이 되었다. 별�
 
 프로젝트 전용 `FOCUSAI_DEPLOY_SSH_KEY`, `FOCUSAI_DEPLOY_KNOWN_HOSTS`, `FOCUSAI_DEPLOY_TARGET` 세 repository secret과 S2의 제한 SSH entry 설치가 필요하다. 고정 명령은 `event-deploy-focusai <SHA40> <run ID>`다. strict host pinning·일시 key0600·종료 정리를 사용한다. 같은 프로젝트 실행은 취소 없이 queue에 쌓이고, 원격 lock timeout(exit75 및 정확한 오류)만 최대20분 재시도한다. 요청 SHA/run·실제 배포 run/artifact run·image digest 영수증을 확인한다. 수동 복구에는 성공한 main push CI의 정확한 run ID와 SHA를 입력한다.
 
-현재는 로컬 candidate 준비 단계이며 이 변경에서 키·secret 등록, S2 설치, 실제 workflow_run 배포·health 검증을 수행하지 않았다. 실제 운영 helper·현재 배포 baseline을 별도로 확인하고 기존 Node/이미지 보안 수정과 이번 workflow·CI 보호 경로의 전체 차이를 검토한 뒤 최초 승격해야 한다. 기존 보안 검사·DB 스키마 해시·manager→deploy 잠금·실패 롤백을 유지하며 가드를 제외하지 않는다. 실제 새 push CI→이벤트→제한 command→운영 SHA/run/image/health 검증 전 기존 timer는 유지한다. 서버 전체 재부팅·DB/Compose/SMTP/Discord 변경은 없다.
+### 운영 적용과 이벤트 검증 — 2026-10-30
+
+전용 제한 SSH entry와 세 repository secret을 설치했다. 기존 보안 수정과 이벤트 workflow를 포함한 10파일 차이를 검토한 뒤, 성공 main CI `40823293181`의 `8a866d6716f5aa2fdb4fbc58e3fce79fb4fa4c00`을 일회 승격했다. 실제 image는 `sha256:9eb886a01bd400836581d0473a973ae31c59bd9d8966324ea42860dd09857c70`이며 운영 SHA/run/image, 앱 mount·자원 제한, DB와 다른 16개 컨테이너, 전용 터널, 환경 및 보호 파일 보존을 포함한 24개 사후 확인이 통과했다. 기존 poller와 DB 스키마는 변경하지 않았다.
+
+수동 recovery event `40923456740`도 같은 성공 CI와 SHA로 통과했다. 새 커밋 자동배포를 타이머의 개입 없이 확인하기 위해 `focusai-deploy.timer`를 disabled/inactive로 전환했다. 이 문서 갱신의 main push CI와 후속 `workflow_run`, 실제 운영 SHA/run/image/health 일치를 별도로 확인해야 자동 전환 완료로 판정한다. 실패하면 실제 앱·복구 marker를 먼저 확인하고 기존 timer를 복원한다.
+
+기존 보안 검사·DB 스키마 해시·manager→deploy 잠금·실패 롤백을 유지한다. `deploy/`, DB 소스와 workflow 같은 보호 경로 변경은 별도 검토가 필요하며, 일반 업데이트로 가드를 해제하지 않는다. 서버 전체 재부팅·DB/Compose/SMTP/Discord 변경은 없다.
