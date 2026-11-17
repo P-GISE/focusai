@@ -303,10 +303,6 @@ function isResetTokenInvalidError(error: unknown) {
   return error instanceof Error && error.message === 'RESET_TOKEN_INVALID'
 }
 
-function isMailNotConfiguredError(error: unknown) {
-  return error instanceof Error && error.message === 'MAIL_NOT_CONFIGURED'
-}
-
 function toValidAnnouncementWindow(startsAt: string | null, endsAt: string | null) {
   if (!startsAt || !endsAt) {
     return true
@@ -467,26 +463,28 @@ app.post('/api/auth/forgot-password', authRateLimit, async (request: Request, re
 
   try {
     const payload = forgotPasswordSchema.parse(request.body)
-    const resetRequest = await requestPasswordReset(payload)
-
-    if (resetRequest) {
-      await sendPasswordResetEmail({
-        toEmail: resetRequest.email,
-        toName: resetRequest.name,
-        token: resetRequest.token,
-      })
-    }
+    // Account lookup and delivery must not affect the public response or its timing.
+    // shortcut: pending delivery is lost on shutdown; use a durable queue when delivery guarantees are required.
+    setImmediate(async () => {
+      try {
+        const resetRequest = await requestPasswordReset(payload)
+        if (resetRequest) {
+          await sendPasswordResetEmail({
+            toEmail: resetRequest.email,
+            toName: resetRequest.name,
+            token: resetRequest.token,
+          })
+        }
+      } catch (error) {
+        logRouteError('auth.forgot-password.delivery', error)
+      }
+    })
 
     response.json({
       ok: true,
       message: '해당 이메일이 존재하면 비밀번호 재설정 링크를 전송했습니다.',
     })
   } catch (error) {
-    if (isMailNotConfiguredError(error)) {
-      response.status(503).json({ error: '비밀번호 재설정 이메일 발송이 아직 설정되지 않았습니다.' })
-      return
-    }
-
     logRouteError('auth.forgot-password', error)
     rejectValidationError(response, '비밀번호 재설정 요청에 실패했습니다.')
   }
